@@ -17,11 +17,12 @@
 	  "baseUrl": ".",
 	//   "types": ["svelte", "@sveltejs/kit"],  // Add this line
 	  "paths": {
+		"$env/*": [".svelte-kit/ambient.d.ts"],
 		"$lib": ["./src/lib"],
 		"$lib/*": ["./src/lib/*"],
 		// "$app/*": ["./.svelte-kit/types/*"]  // Add this line
 	  }
 	},
-	"include": ["src/**/*", ".svelte-kit/types/**/*"],  // Modified include
+	"include": ["src/**/*", ".svelte-kit/types/**/*","types.d.ts"],  // Modified include
 	"exclude": ["node_modules", "dist"]
   }

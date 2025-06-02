@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dev_fee_contract_address } from "$lib/ergo/envs";
   import type { Platform, BountyMetadata } from "$lib/common/platform";
   import type { Bounty } from "$lib/common/bounty";
   import { ErgoPlatform } from "$lib/ergo/platform";
@@ -51,11 +52,14 @@
     successMessage = null;
     transactionId = null;
 
+    const rewardNanoErg = Math.floor(rewardAmount * 1_000_000_000);
+    const deadlineBlock =
+      Math.floor(Date.now() / 1000 / 120) + deadlineDays * 24 * 30;
+
     try {
       const rewardNanoErg = Math.floor(rewardAmount * 1_000_000_000);
       const deadlineBlock =
         Math.floor(Date.now() / 1000 / 120) + deadlineDays * 24 * 30;
-
       const txId = await platform.create_bounty(
         bountyTitle.trim(),
         bountyDescription.trim(),
@@ -67,9 +71,15 @@
           category: bountyCategory,
           tags: bountyTags
             .split(",")
-            .map((tag) => tag.trim())
-            .filter((tag) => tag),
+            .map((t) => t.trim())
+            .filter((t) => t),
           status: "open",
+          // Add dev fee metadata
+          devFee: {
+            address: dev_fee_contract_address,
+            percentage: 1, // 1% fee (adjust as needed)
+            amount: (rewardAmount * 0.01).toFixed(4) + " ERG"
+          },
         })
       );
 
@@ -80,8 +90,8 @@
       transactionId = txId;
       successMessage = `Bounty created successfully! Transaction ID: ${txId}`;
 
-       await invalidate('bounties');
-       
+      await invalidate("bounties");
+
       // Reset form
       bountyTitle = "";
       bountyDescription = "";
@@ -100,13 +110,24 @@
       }
     } catch (error) {
       console.error("Error creating bounty:", error);
-      errorMessage =
-        error instanceof Error ? error.message : "Failed to create bounty";
-      transactionId = null;
-    } finally {
-      isSubmitting = false;
+    
+    // Type-safe error handling
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      // Add specific handling for insufficient funds
+      if ('message' in error && typeof error.message === 'string' && 
+          error.message.includes("Insufficient balance")) {
+        errorMessage = error.message;
+      }
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else {
+      errorMessage = "Failed to create bounty (unknown error)";
     }
+  } finally {
+    isSubmitting = false;
   }
+}
 
   function clearMessages() {
     errorMessage = null;
@@ -130,6 +151,16 @@
           required
           on:input={clearMessages}
         />
+      </div>
+
+      <!-- Add this near other form elements -->
+      <div class="form-group">
+        <Label class="text-sm text-muted-foreground">
+          Platform fee: 1% (Paid to contract: {dev_fee_contract_address.slice(
+            0,
+            6
+          )}...{dev_fee_contract_address.slice(-4)})
+        </Label>
       </div>
 
       <!-- Reward Amount, Deadline, and Min Submissions -->

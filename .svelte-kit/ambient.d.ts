@@ -67,6 +67,8 @@ declare module '$env/static/private' {
 	export const npm_package_name: string;
 	export const npm_package_version: string;
 	export const NUMBER_OF_PROCESSORS: string;
+	export const NVM_HOME: string;
+	export const NVM_SYMLINK: string;
 	export const OneDrive: string;
 	export const OS: string;
 	export const Path: string;
@@ -106,7 +108,8 @@ declare module '$env/static/private' {
  * ```
  */
 declare module '$env/static/public' {
-	
+	export const PUBLIC_DEV_CONTRACT_HASH: string;
+	export const PUBLIC_DEV_CONTRACT_ADDRESS: string;
 }
 
 /**
@@ -166,6 +169,8 @@ declare module '$env/dynamic/private' {
 		npm_package_name: string;
 		npm_package_version: string;
 		NUMBER_OF_PROCESSORS: string;
+		NVM_HOME: string;
+		NVM_SYMLINK: string;
 		OneDrive: string;
 		OS: string;
 		Path: string;
@@ -212,6 +217,8 @@ declare module '$env/dynamic/private' {
  */
 declare module '$env/dynamic/public' {
 	export const env: {
+		PUBLIC_DEV_CONTRACT_HASH: string;
+		PUBLIC_DEV_CONTRACT_ADDRESS: string;
 		[key: `PUBLIC_${string}`]: string | undefined;
 	}
 }

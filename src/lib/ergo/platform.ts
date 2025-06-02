@@ -5,6 +5,7 @@ import { explorer_uri, network_id } from './envs';
 import { address, connected, network, balance } from "../common/store";
 import type { contract_version } from './contract';
 import type { Box, Amount } from '@fleet-sdk/core';
+import { PUBLIC_DEV_CONTRACT_ADDRESS as dev_fee_contract_address } from '$env/static/public';
 
 declare global {
   interface Window {
@@ -51,7 +52,7 @@ export class ErgoPlatform implements Platform {
   // --- Blockchain State ---
   async get_current_height(): Promise<number> {
     try {
-      return await window.ergo?.get_current_height() ?? 
+      return await window.ergo?.get_current_height() ??
         (await fetch(`${explorer_uri}/api/v1/networkState`)).json().then(data => data.height);
     } catch (error) {
       console.error("Failed to get block height:", error);
@@ -67,10 +68,10 @@ export class ErgoPlatform implements Platform {
     try {
       const response = await fetch(`${explorer_uri}/api/v1/addresses/${addr}/balance/confirmed`);
       const data = await response.json();
-      
+
       balanceMap.set("ERG", data.nanoErgs);
       balance.set(data.nanoErgs);
-      
+
       data.tokens?.forEach((token: { tokenId: string; amount: number }) => {
         balanceMap.set(token.tokenId, token.amount);
       });
@@ -84,37 +85,216 @@ export class ErgoPlatform implements Platform {
 
   // --- Bounty Functions ---
   async create_bounty(
-    title: string,
-    description: string,
-    rewardNanoErg: number,
-    deadlineBlock: number,
-    minSubmissions: number = 1
-  ): Promise<string | null> {
-    try {
-      if (!window.ergo) throw new Error("Wallet not connected");
+  title: string,
+  description: string,
+  rewardNanoErg: number,
+  deadlineBlock: number,
+  minSubmissions: number,
+  creatorAddress: string,
+  metadata: string
+): Promise<string | null> {
+  const devFeePercentage = 1; // 1% 
+const devFeeNanoErg = Math.floor(rewardNanoErg * (devFeePercentage / 100));
+const minerFee = 1000000; // 0.001 ERG
+const totalRequired = rewardNanoErg + devFeeNanoErg + minerFee + 1000000; // + buffer
+  try {
+    if (!window.ergo) throw new Error("Wallet not connected");
 
-      const tx = await window.ergo.submit_tx({
-        outputs: [{
-          value: rewardNanoErg.toString(),
-          ergoTree: "YOUR_BOUNTY_CONTRACT_ERGOTREE_HERE",
-          assets: [],
-          registers: {
-            R4: title,
-            R5: description,
-            R6: deadlineBlock.toString(),
-            R7: minSubmissions.toString()
-          }
-        }],
-        inputs: [],
-        fee: 1_000_000 // 0.001 ERG
-      });
+    // Step 1: Get current height for validation
+    const currentHeight = await this.get_current_height();
+    if (deadlineBlock <= currentHeight) {
+      throw new Error("Deadline must be in the future");
+    }
 
-      return tx;
-    } catch (error) {
-      console.error("Bounty creation failed:", error);
-      return null;
+    // Step 2: Get creator's public key
+    const creatorPubKey = await this.getPublicKey(creatorAddress);
+    
+    // Step 3: Get sufficient UTXOs
+    const totalRequired = rewardNanoErg + 2000000; // reward + fees + box creation
+    const selectedUtxos = await this.getUtxosForAmount(totalRequired);
+    
+    // Step 4: Create bounty token (using first input's ID + index 0)
+    const bountyTokenId = selectedUtxos[0].boxId;
+    
+    // Step 5: Prepare bounty data (submissions root + judgments root + metadata root)
+    const bountyData = this.createBountyData(metadata);
+    
+    // Step 6: Build the unsigned transaction
+    const unsignedTx = {
+      inputs: selectedUtxos.map(utxo => ({
+        boxId: utxo.boxId,
+        spendingProof: {
+          proofBytes: "",
+          extension: {}
+        }
+      })),
+      outputs: [
+        // Main bounty box (unchanged)
+  {
+    value: rewardNanoErg,
+    ergoTree: this.getBountyContractErgoTree(),
+    assets: [/* ... */],
+    registers: { /* ... */ }
+  },
+  
+  // Dev fee box (NEW)
+  {
+    value: devFeeNanoErg,
+    ergoTree: dev_fee_contract_address, // From envs.ts
+    assets: [],
+    creationHeight: currentHeight
+  },
+  
+  // Miner fee box
+  {
+    value: minerFee,
+    ergoTree: "0008cd03...", // Standard miner fee script
+    assets: []
+  }
+      ],
+      fee: 1000000, // 0.001 ERG
+      changeAddress: creatorAddress
+    };
+
+    console.log("Built unsigned transaction:", JSON.stringify(unsignedTx, null, 2));
+
+    // Step 7: Sign the transaction
+    const signedTx = await window.ergo.sign_tx(unsignedTx);
+    
+    if (!signedTx || !signedTx.id) {
+      throw new Error("Failed to sign transaction or missing transaction ID");
+    }
+
+    console.log("Transaction signed successfully:", signedTx.id);
+
+    // Step 8: Submit transaction to blockchain
+    const txId = await window.ergo.submit_tx(signedTx);
+    
+    return txId;
+  } catch (error) {
+    console.error("Bounty creation failed:", error);
+    throw error;
+  }
+}
+
+// Helper method to get creator's public key from address
+private async getPublicKey(address: string): Promise<string> {
+  try {
+    // This is a simplified approach - you may need to adjust based on your wallet integration
+    const addressBytes = this.decodeAddress(address);
+    return addressBytes; // Return the public key bytes
+  } catch (error) {
+    throw new Error("Failed to extract public key from address");
+  }
+}
+
+// Helper method to decode Ergo address
+private decodeAddress(address: string): string {
+  // Implement proper address decoding here
+  // This is a placeholder - use proper Ergo address decoding library
+  return address; // Simplified for now
+}
+
+// Helper method to get the bounty contract ErgoTree
+private getBountyContractErgoTree(): string {
+  // This should be your compiled contract's ErgoTree
+  // You need to compile your ErgoScript contract to get the actual ErgoTree
+  return "YOUR_COMPILED_CONTRACT_ERGOTREE_HERE";
+}
+
+// Helper method to create bounty data structure
+private createBountyData(metadata: string): Uint8Array {
+  // Create 96 bytes: submissions root (32) + judgments root (32) + metadata root (32)
+  const data = new Uint8Array(96);
+  
+  // Initialize with empty roots (all zeros)
+  data.fill(0, 0, 64); // submissions and judgments roots start empty
+  
+  // Set metadata root (hash of metadata)
+  const metadataBytes = new TextEncoder().encode(metadata);
+  const metadataHash = this.simpleHash(metadataBytes);
+  data.set(metadataHash.slice(0, 32), 64);
+  
+  return data;
+}
+
+// Simple hash function (replace with proper blake2b256 if available)
+private simpleHash(data: Uint8Array): Uint8Array {
+  // This is a placeholder - use proper blake2b256 hashing
+  const hash = new Uint8Array(32);
+  for (let i = 0; i < Math.min(data.length, 32); i++) {
+    hash[i] = data[i];
+  }
+  return hash;
+}
+
+// Helper method to get sufficient UTXOs
+private async getUtxosForAmount(requiredAmount: number): Promise<any[]> {
+  const utxos = await window.ergo?.get_utxos();
+  if (!utxos || utxos.length === 0) {
+    throw new Error("No UTXOs available");
+  }
+
+  let totalValue = 0;
+  const selectedUtxos = [];
+  
+  for (const utxo of utxos) {
+    selectedUtxos.push(utxo);
+    totalValue += parseInt(utxo.value);
+    
+    if (totalValue >= requiredAmount) {
+      break;
     }
   }
+  
+  if (totalValue < requiredAmount) {
+    throw new Error(`Insufficient balance. Required: ${requiredAmount}, Available: ${totalValue}`);
+  }
+  
+  return selectedUtxos;
+}
+
+// Serialization helpers for Ergo registers
+private serializeInt(value: number): string {
+  // Convert to hex string for Ergo register
+  const buffer = new ArrayBuffer(4);
+  new DataView(buffer).setInt32(0, value, false);
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+private serializeLong(value: number): string {
+  // Convert to hex string for Ergo register
+  const buffer = new ArrayBuffer(8);
+  new DataView(buffer).setBigInt64(0, BigInt(value), false);
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+private serializeLongArray(values: number[]): string {
+  // Serialize array of longs
+  let result = '';
+  result += this.serializeInt(values.length); // Array length
+  for (const value of values) {
+    result += this.serializeLong(value);
+  }
+  return result;
+}
+
+private serializeGroupElement(pubKey: string): string {
+  // Convert public key to group element format
+  // This needs proper implementation based on your public key format
+  return pubKey;
+}
+
+private serializeByteArray(data: Uint8Array): string {
+  // Convert byte array to hex string
+  return Array.from(data)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
   async fetch_bounties(offset: number = 0): Promise<Map<string, Bounty>> {
     try {
