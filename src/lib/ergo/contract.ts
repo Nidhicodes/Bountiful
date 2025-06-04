@@ -33,56 +33,19 @@ function generate_contract_v1_0(owner_addr: string, dev_fee_contract_bytes_hash:
 // R8: Coll[Byte]           Creator's public key (33 bytes)
 // R9: Coll[Byte]           Encoded JSON containing: bounty metadata, submissions data, judgment data
 
-// ===== Compile Time Constants ===== //
-val dev_wallet_address = "${owner_addr}"
-
 // ===== Helper Functions ===== //
-def isSigmaPropEqualToBoxProp(prop: SigmaProp, box: Box): Boolean = {
-  val sigmaPropBytes: Coll[Byte] = prop.propBytes
-  val boxPropBytes: Coll[Byte] = box.propositionBytes
+def isSigmaPropEqualToBoxProp(propAndBox: (SigmaProp, Box)): Boolean = {
+  val prop: SigmaProp = propAndBox._1
+  val box: Box = propAndBox._2
+  val propBytes: Coll[Byte] = prop.propBytes
+  val treeBytes: Coll[Byte] = box.propositionBytes
 
-  if (boxPropBytes(0) == 0x00.toByte) {
-    if (sigmaPropBytes.size == 34 && boxPropBytes.size == 34 && sigmaPropBytes(0) == 0xcd.toByte) {
-      sigmaPropBytes.slice(1, 34) == boxPropBytes.slice(1, 34)
-    } else {
-      false
-    }
+  if (treeBytes(0) == 0) {
+      (treeBytes == propBytes)
   } else {
-    sigmaPropBytes == boxPropBytes
-  }
-}
-
-def byteArrayToLong(bytes: Coll[Byte]): Long = {
-  val len = bytes.size
-  if (len == 0) {
-    0L
-  } else {
-    val bytesToProcess = if (len > 8) bytes.slice(0, 8) else bytes
-    val numBytes = bytesToProcess.size
-    
-    def processBytes(index: Int, accumulator: Long): Long = {
-      if (index >= numBytes) {
-        accumulator
-      } else {
-        val byteValue = bytesToProcess(index).toLong & 0xFFL
-        val shiftAmount = (numBytes - 1 - index) * 8
-        processBytes(index + 1, accumulator + (byteValue << shiftAmount))
-      }
-    }
-    
-    processBytes(0, 0L)
-  }
-}
-
-def extractJsonField(json: Coll[Byte], field: String): Coll[Byte] = {
-  if (field == "version") {
-    if (json.size >= 8) {
-      json.slice(0, 8)
-    } else {
-      Coll(0.toByte, 0.toByte, 0.toByte, 0.toByte, 0.toByte, 0.toByte, 0.toByte, 0.toByte)
-    }
-  } else {
-    Coll[Byte]()
+      // offset = 1 + <number of VLQ encoded bytes to store propositionBytes.size>
+      val offset = if (treeBytes.size > 127) 3 else 2
+      (propBytes.slice(1, propBytes.size) == treeBytes.slice(offset, treeBytes.size))
   }
 }
 
@@ -114,16 +77,13 @@ val outBox = if (OUTPUTS.size > 0) OUTPUTS(0) else SELF
 
 // ===== Box Replication Validation ===== //
 val isBoxReplication = {
-  val sameId = if (outBox.tokens.size > 0) {
-    selfId == outBox.tokens(0)._1 && selfBountyToken == outBox.tokens(0)._2
-  } else false
-  
+  val sameId = outBox.tokens.size > 0 && (selfId == outBox.tokens(0)._1 && selfBountyToken == outBox.tokens(0)._2)
   val sameDeadline = outBox.R4[Int].isDefined && selfDeadline == outBox.R4[Int].get
   val sameMinSubmissions = outBox.R5[Long].isDefined && selfMinSubmissions == outBox.R5[Long].get
   val sameCreatorPubKey = outBox.R8[Coll[Byte]].isDefined && creatorPubKey == outBox.R8[Coll[Byte]].get
   val sameScript = selfScript == outBox.propositionBytes
   
-  sameId && sameDeadline && sameMinSubmissions && sameCreatorPubKey && sameScript
+  allOf(Coll(sameId, sameDeadline, sameMinSubmissions, sameCreatorPubKey, sameScript))
 }
 
 // ===== Actions ===== //
@@ -132,187 +92,180 @@ val isBoxReplication = {
 val isSubmitSolution = {
   val beforeDeadline = HEIGHT <= selfDeadline
 
-  val correctSubmissionIncrement = if (outBox.R6[Coll[Long]].isDefined) {
+  val correctSubmissionIncrement = outBox.R6[Coll[Long]].isDefined && {
     val newStats = outBox.R6[Coll[Long]].get
-    if (newStats.size >= 3) {
+    newStats.size >= 3 && {
       val newTotal = newStats(0)
       val newAccepted = newStats(1)
       val newRejected = newStats(2)
-      
       newTotal == selfTotalSubmissions + 1 && 
       newAccepted == selfAcceptedSubmissions &&
       newRejected == selfRejectedSubmissions
-    } else false
-  } else false
+    }
+  }
 
-  val updatedBountyData = if (outBox.R9[Coll[Byte]].isDefined) {
+  val updatedBountyData = outBox.R9[Coll[Byte]].isDefined && {
     val newBountyData = outBox.R9[Coll[Byte]].get
-    if (newBountyData.size >= 96) {
+    newBountyData.size >= 96 && {
       val newSubmissionsRoot = newBountyData.slice(0, 32)
       submissionsRoot != newSubmissionsRoot &&
       newBountyData.slice(32, 64) == judgmentsRoot &&
       newBountyData.slice(64, 96) == metadataRoot
-    } else false
-  } else false
+    }
+  }
   
   val valueUnchanged = selfValue == outBox.value
   
-  beforeDeadline && correctSubmissionIncrement && updatedBountyData && isBoxReplication && valueUnchanged
+  allOf(Coll(
+    beforeDeadline,
+    correctSubmissionIncrement,
+    updatedBountyData,
+    isBoxReplication,
+    valueUnchanged
+  ))
 }
 
 // Action: Judge a submission
 val isJudgeSubmission = {
-  val creatorSigned = creatorProp
-  
-  val validJudgeDataInputs = CONTEXT.dataInputs.size == 1 &&
+  val checkValidJudgeDataInputs = CONTEXT.dataInputs.size == 1 &&
                              CONTEXT.dataInputs(0).R4[Boolean].isDefined &&
                              CONTEXT.dataInputs(0).R5[Int].isDefined
 
-  if (validJudgeDataInputs) {
-    val decision = CONTEXT.dataInputs(0).R4[Boolean].get
-    
-    val correctJudgmentUpdate = if (outBox.R6[Coll[Long]].isDefined) {
-      val newStats = outBox.R6[Coll[Long]].get
-      if (newStats.size >= 3) {
-        val newTotal = newStats(0)
-        val newAccepted = newStats(1)
-        val newRejected = newStats(2)
-        
-        val totalUnchanged = newTotal == selfTotalSubmissions
-        val statsUpdated = if (decision) {
-          newAccepted == selfAcceptedSubmissions + 1 && newRejected == selfRejectedSubmissions
-        } else {
-          newAccepted == selfAcceptedSubmissions && newRejected == selfRejectedSubmissions + 1
+  val decision = if (checkValidJudgeDataInputs) CONTEXT.dataInputs(0).R4[Boolean].get else false
+
+  val correctJudgmentUpdateEval = if (checkValidJudgeDataInputs) {
+      outBox.R6[Coll[Long]].isDefined && {
+        val newStats = outBox.R6[Coll[Long]].get
+        newStats.size >= 3 && {
+          val newTotal = newStats(0)
+          val newAccepted = newStats(1)
+          val newRejected = newStats(2)
+          val totalUnchanged = newTotal == selfTotalSubmissions
+          val statsUpdated = if (decision) {
+            newAccepted == selfAcceptedSubmissions + 1 && newRejected == selfRejectedSubmissions
+          } else {
+            newAccepted == selfAcceptedSubmissions && newRejected == selfRejectedSubmissions + 1
+          }
+          totalUnchanged && statsUpdated
         }
-        
-        totalUnchanged && statsUpdated
-      } else false
-    } else false
+      }
+  } else false
+
+  val judgmentRecordedEval = if (checkValidJudgeDataInputs) {
+      outBox.R9[Coll[Byte]].isDefined && {
+        val newBountyData = outBox.R9[Coll[Byte]].get
+        newBountyData.size >= 96 && {
+          val newJudgmentsRoot = newBountyData.slice(32, 64)
+          judgmentsRoot != newJudgmentsRoot &&
+          newBountyData.slice(0, 32) == submissionsRoot &&
+          newBountyData.slice(64, 96) == metadataRoot
+        }
+      }
+  } else false
   
-    val judgmentRecorded = if (outBox.R9[Coll[Byte]].isDefined) {
-      val newBountyData = outBox.R9[Coll[Byte]].get
-      if (newBountyData.size >= 96) {
-        val newJudgmentsRoot = newBountyData.slice(32, 64)
-        judgmentsRoot != newJudgmentsRoot &&
-        newBountyData.slice(0, 32) == submissionsRoot &&
-        newBountyData.slice(64, 96) == metadataRoot
-      } else false
-    } else false
+  val valueUnchanged = selfValue == outBox.value
+
+  val allBooleanChecks = allOf(Coll(
+    checkValidJudgeDataInputs,
+    correctJudgmentUpdateEval,
+    judgmentRecordedEval,
+    isBoxReplication,
+    valueUnchanged
+  ))
   
-    val valueUnchanged = selfValue == outBox.value
-    
-    creatorSigned && correctJudgmentUpdate && judgmentRecorded && isBoxReplication && valueUnchanged
-  } else {
-    false
-  }
+  creatorProp && allBooleanChecks
 }
 
 // Action: Withdraw reward
 val isWithdrawReward = {
-  val validWithdrawDataInputs = CONTEXT.dataInputs.size == 1 &&
+  val checkValidWithdrawDataInputs = CONTEXT.dataInputs.size == 1 &&
                                 CONTEXT.dataInputs(0).R4[SigmaProp].isDefined &&
                                 CONTEXT.dataInputs(0).R5[Int].isDefined
+  
+  val winnerAddress = if (checkValidWithdrawDataInputs) CONTEXT.dataInputs(0).R4[SigmaProp].get else creatorProp 
+  val judgmentHeight = if (checkValidWithdrawDataInputs) CONTEXT.dataInputs(0).R5[Int].get else 0 
 
-  if (validWithdrawDataInputs) {
-    val winnerAddress = CONTEXT.dataInputs(0).R4[SigmaProp].get
-    val judgmentHeight = CONTEXT.dataInputs(0).R5[Int].get
-
-    val minerFee = 1100000L
-    val platformFeePercent = ${dev_fee}L
-    val platformFee = selfRewardAmount * platformFeePercent / 100L
-    val devFee = platformFee
+  val minerFee = 1000000L
+  val platformFeePercent = ${dev_fee}L
+  val platformFee = selfRewardAmount * platformFeePercent / 100L
+  
+  val hasAcceptedSubmission = selfAcceptedSubmissions > 0L
+  val hasMinimumSubmissions = selfTotalSubmissions >= selfMinSubmissions
+  
+  val correctDistributionEval = if (checkValidWithdrawDataInputs) {
+      OUTPUTS.size >= 3 && {
+        val winnerBox = OUTPUTS(1)
+        val devBox = OUTPUTS(2)
+        val winnerAmount = selfRewardAmount - platformFee - minerFee
+        val correctWinnerPayment = winnerBox.value == winnerAmount && 
+                                isSigmaPropEqualToBoxProp((winnerAddress, winnerBox))
+        val correctDevFee = devBox.value == platformFee && 
+                            blake2b256(devBox.propositionBytes) == fromBase16("${dev_fee_contract_bytes_hash}")
+        correctWinnerPayment && correctDevFee
+      }
+  } else false
     
-    val hasAcceptedSubmission = selfAcceptedSubmissions > 0L
-    val hasMinimumSubmissions = selfTotalSubmissions >= selfMinSubmissions
+  val disputePeriodPassedEval = if (checkValidWithdrawDataInputs) {
+    val disputePeriod = 720 
+    HEIGHT >= judgmentHeight + disputePeriod
+  } else false
     
-    val correctDistribution = if (OUTPUTS.size >= 3) {
-      val winnerBox = OUTPUTS(1)
-      val devBox = OUTPUTS(2)
-      
-      val winnerAmount = selfRewardAmount - platformFee - minerFee
-      val correctWinnerPayment = winnerBox.value == winnerAmount && 
-                              isSigmaPropEqualToBoxProp(winnerAddress, winnerBox)
-      
-      val correctDevFee = devBox.value == devFee &&
-                          devBox.propositionBytes == fromBase16("${dev_fee_contract_bytes_hash}")
-      
-      correctWinnerPayment && correctDevFee
-    } else false
-    
-    val disputePeriodPassed = {
-      val disputePeriod = 720
-      HEIGHT >= judgmentHeight + disputePeriod
-    }
-    
-    hasAcceptedSubmission && hasMinimumSubmissions && correctDistribution && disputePeriodPassed
-  } else {
-    false
-  }
+  allOf(Coll(
+    checkValidWithdrawDataInputs,
+    hasAcceptedSubmission,
+    hasMinimumSubmissions,
+    correctDistributionEval,
+    disputePeriodPassedEval
+  ))
 }
 
 // Action: Refund bounty
 val isRefundBounty = {
   val afterDeadline = HEIGHT > selfDeadline
-  val canBeRefunded = afterDeadline && 
-                      (selfTotalSubmissions < selfMinSubmissions || selfAcceptedSubmissions == 0L)
-  
-  val correctRefund = if (OUTPUTS.size >= 2) {
-    val creatorBox = OUTPUTS(1)
-    isSigmaPropEqualToBoxProp(creatorProp, creatorBox) && creatorBox.value == selfValue
-  } else false
-  
-  canBeRefunded && correctRefund
+  val canBeRefundedCond = selfTotalSubmissions < selfMinSubmissions || selfAcceptedSubmissions == 0L
+  val correctRefundCond = OUTPUTS.size >= 2 && {
+                        val creatorBox = OUTPUTS(1)
+                        isSigmaPropEqualToBoxProp((creatorProp, creatorBox)) && creatorBox.value == selfValue
+                      }
+  allOf(Coll(afterDeadline, canBeRefundedCond, correctRefundCond))
 }
 
 // Action: Add more funds
 val isAddMoreFunds = {
   val creatorSigned = creatorProp
-  
   val onlyValueIncreased = outBox.value > selfValue && 
                           outBox.R7[Long].isDefined &&
                           outBox.R7[Long].get > selfRewardAmount &&
                           outBox.R7[Long].get - selfRewardAmount == outBox.value - selfValue
-  
-  creatorSigned && onlyValueIncreased && isBoxReplication
+  val allAddFundsConditionsMet = allOf(Coll(onlyValueIncreased, isBoxReplication))
+  creatorSigned && allAddFundsConditionsMet
 }
 
 // Action: Extend deadline
 val isExtendDeadline = {
   val creatorSigned = creatorProp
-  
   val onlyDeadlineExtended = outBox.R4[Int].isDefined &&
                             outBox.R4[Int].get > selfDeadline &&
                             HEIGHT <= selfDeadline
-  
-  creatorSigned && onlyDeadlineExtended && isBoxReplication
+  val allExtendDeadlineConditionsMet = allOf(Coll(onlyDeadlineExtended, isBoxReplication))
+  creatorSigned && allExtendDeadlineConditionsMet
 }
 
 // Action: Update metadata
 val isUpdateMetadata = {
   val creatorSigned = creatorProp
-  
-  val onlyMetadataUpdated = if (outBox.R9[Coll[Byte]].isDefined) {
+  val onlyMetadataUpdated = outBox.R9[Coll[Byte]].isDefined && {
     val newBountyData = outBox.R9[Coll[Byte]].get
-    if (newBountyData.size >= 96) {
+    newBountyData.size >= 96 && {
       val newMetadataRoot = newBountyData.slice(64, 96)
       metadataRoot != newMetadataRoot &&
       newBountyData.slice(0, 32) == submissionsRoot &&
       newBountyData.slice(32, 64) == judgmentsRoot
-    } else false
-  } else false
-  
-  val beforeDeadline = HEIGHT <= selfDeadline
-  
-  val hasVersionIncrement = {
-    val oldVersion = extractJsonField(selfBountyData, "version")
-    val newVersion = if (outBox.R9[Coll[Byte]].isDefined) {
-      extractJsonField(outBox.R9[Coll[Byte]].get, "version")
-    } else Coll[Byte]()
-    
-    byteArrayToLong(newVersion) > byteArrayToLong(oldVersion)
+    }
   }
-  
-  creatorSigned && onlyMetadataUpdated && beforeDeadline && hasVersionIncrement && isBoxReplication
+  val beforeDeadline = HEIGHT <= selfDeadline
+  val allUpdateMetadataConditionsMet = allOf(Coll(onlyMetadataUpdated, beforeDeadline, isBoxReplication))
+  creatorSigned && allUpdateMetadataConditionsMet
 }
 
 // Initial contract creation validation
@@ -323,18 +276,24 @@ val correctBuild = {
                      selfAcceptedSubmissions == 0L && 
                      selfRejectedSubmissions == 0L
   val sufficientFunds = SELF.value >= selfRewardAmount
-  
-  hasBountyToken && initialStats && sufficientFunds
+  allOf(Coll(hasBountyToken, initialStats, sufficientFunds))
 }
 
 // All possible actions for the contract
-val actions = isSubmitSolution || isJudgeSubmission || isWithdrawReward || 
-              isRefundBounty || isAddMoreFunds || isExtendDeadline || isUpdateMetadata
+val actions = anyOf(Coll(
+    isSubmitSolution, 
+    isJudgeSubmission, 
+    isWithdrawReward, 
+    isRefundBounty, 
+    isAddMoreFunds, 
+    isExtendDeadline, 
+    isUpdateMetadata
+))
 
 // Final contract condition
-sigmaProp(correctBuild || actions)
+sigmaProp(correctBuild && actions)
 }
-`
+`;
 }
 
 function generate_contract_v1_1(owner_addr: string, dev_fee_contract_bytes_hash: string, dev_fee: number, token_id: string) {
@@ -354,10 +313,12 @@ function handle_contract_generator(version: contract_version) {
     default:
       throw new Error("Invalid contract version");
   }
-  return f
+  return f;
 }
 
 export function get_address(constants: ConstantContent, version: contract_version) {
+
+    // In case that dev_hash is undefined, we try to use the current contract hash. But the tx will fail if the hash is different.
     let contract = handle_contract_generator(version)(constants.owner, constants.dev_hash ?? get_dev_contract_hash(), constants.dev_fee, constants.token_id);
     let ergoTree = compile(contract, {version: 1, network: network_id})
 
@@ -366,28 +327,52 @@ export function get_address(constants: ConstantContent, version: contract_versio
 }
 
 export function get_template_hash(version: contract_version): string {
-  const random_mainnet_addr = "9f3iPJTiciBYA6DnTeGy98CvrwyEhiP7wNrhDrQ1QeKPRhTmaqQ";
-  const random_testnet_addr = "3WzH5yEJongYHmBJnoMs3zeK3t3fouMi3pigKdEURWcD61pU6Eve";
-  let random_addr = network_id == "mainnet" ? random_mainnet_addr : random_testnet_addr;
-  const random_dev_contract = uint8ArrayToHex(blake2b256("9a3d2f6b"));
+    try {
+        const random_mainnet_addr = "9f3iPJTiciBYA6DnTeGy98CvrwyEhiP7wNrhDrQ1QeKPRhTmaqQ";
+        const random_testnet_addr = "3WzH5yEJongYHmBJnoMs3zeK3t3fouMi3pigKdEURWcD61pU6Eve";
+        const random_addr = network_id === "mainnet" ? random_mainnet_addr : random_testnet_addr;
+        const random_dev_contract = uint8ArrayToHex(blake2b256("9a3d2f6b"));
 
-  let contract = handle_contract_generator(version)(random_addr, random_dev_contract, 5, "");
-  return hex.encode(sha256(compile(contract, {version: 1, network: network_id}).template.toBytes()))
+        const contract = handle_contract_generator(version)(random_addr, random_dev_contract, 5, "");
+        const ergoTree = compile(contract, {
+            version: 0, 
+            network: network_id
+        });
+        
+        return hex.encode(sha256(ergoTree.template.toBytes()));
+    } catch (error) {
+        console.error("Template hash generation failed:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to generate template hash: ${errorMessage}`);
+    }
 }
 
 function get_contract_hash(constants: ConstantContent, version: contract_version): string {
-    return uint8ArrayToHex(
-        blake2b256(
-            compile(handle_contract_generator(version)(constants.owner, constants.dev_hash ?? get_dev_contract_hash(), constants.dev_fee, constants.token_id), 
-              {version: 1, network: network_id}
-          ).toBytes()
-        )
-    );
+    try {
+        const contract = handle_contract_generator(version)(
+            constants.owner, 
+            constants.dev_hash ?? get_dev_contract_hash(), 
+            constants.dev_fee, 
+            constants.token_id
+        );
+        
+        const ergoTree = compile(contract, {
+            version: 0, 
+            network: network_id
+        });
+        
+        return uint8ArrayToHex(blake2b256(ergoTree.toBytes()));
+    } catch (error) {
+        console.error("Contract hash generation failed:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to generate contract hash: ${errorMessage}`);
+    }
 }
 
-export function mint_contract_address(constants: ConstantContent, version: contract_version) {
-  const contract_bytes_hash = get_contract_hash(constants, version);
-  let contract = `
+export function mint_contract_address(constants: ConstantContent, version: contract_version): string {
+    try {
+        const contract_bytes_hash = get_contract_hash(constants, version);
+        const contract = `
 {
   val contractBox = OUTPUTS(0)
 
@@ -407,10 +392,16 @@ export function mint_contract_address(constants: ConstantContent, version: contr
       correctContract
   )))
 }
-`
+`;
 
-  let ergoTree = compile(contract, {version: 1, network: network_id})
+   let ergoTree = compile(contract, {version: 0, network: network_id})
 
   let network = (network_id == "mainnet") ? Network.Mainnet : Network.Testnet;
   return ergoTree.toAddress(network).toString();
 }
+    catch (error) {
+            console.error("Mint contract address generation failed:", error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new Error(`Failed to generate mint contract address: ${errorMessage}`);
+        }
+};

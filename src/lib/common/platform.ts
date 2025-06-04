@@ -15,7 +15,7 @@ export interface Platform {
     get_balance(id?: string): Promise<Map<string, number>>;
     
     // Bounty-specific methods
-    create_bounty(
+    submit(
         title: string, 
         description: string, 
         reward: number,

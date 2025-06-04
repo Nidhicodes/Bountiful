@@ -60,7 +60,7 @@
       const rewardNanoErg = Math.floor(rewardAmount * 1_000_000_000);
       const deadlineBlock =
         Math.floor(Date.now() / 1000 / 120) + deadlineDays * 24 * 30;
-      const txId = await platform.create_bounty(
+      const txId = await platform.submit(
         bountyTitle.trim(),
         bountyDescription.trim(),
         rewardNanoErg,

@@ -10,11 +10,11 @@
     "deploy": "npm run build && npx gh-pages -d build"
   },
   "dependencies": {
-    "@fleet-sdk/compiler": "^0.8.5",
-    "@fleet-sdk/core": "^0.8.5",
+    "@fleet-sdk/compiler": "^0.8.1",
     "@fleet-sdk/crypto": "^0.9.1",
     "@tailwindcss/typography": "^0.5.16",
     "bits-ui": "^1.7.0",
+    "buffer": "^6.0.3",
     "ergo-lib-wasm-browser": "^0.28.0",
     "express": "^5.1.0",
     "http-proxy-middleware": "^3.0.5",
@@ -25,6 +25,7 @@
     "tailwind-variants": "^1.0.0"
   },
   "devDependencies": {
+    "@fleet-sdk/core": "^0.8.1",
     "@sveltejs/adapter-static": "^3.0.8",
     "@sveltejs/kit": "^2.21.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",

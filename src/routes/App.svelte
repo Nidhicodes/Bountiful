@@ -122,7 +122,7 @@
       }
   }
 
-  let balanceUpdateInterval: number;
+  let balanceUpdateInterval: ReturnType<typeof setInterval>;
 
   onMount(() => {
       if (browser) {

@@ -12,7 +12,7 @@ declare const ergo: any;
 /**
  * Withdraw reward for a successful submission
  */
-export async function withdraw_reward(
+export async function withdraw(
     bounty: Bounty,
     winnerAddress: string,
     submissionId: string
