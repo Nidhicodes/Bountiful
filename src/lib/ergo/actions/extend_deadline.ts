@@ -30,6 +30,8 @@ export async function extend_deadline(
     }
     
     // Verify current height is before current deadline
+    // Note: bounty.current_height is expected to be populated by the calling application
+    // with the current blockchain height at the time of forming the transaction.
     if (bounty.current_height && bounty.deadline && bounty.current_height > bounty.deadline) {
         alert("Cannot extend deadline after it has passed");
         return null;
@@ -55,7 +57,7 @@ export async function extend_deadline(
     // Building the updated bounty output
     let contractOutput = new OutputBuilder(
         BigInt(bounty.value || 0),
-        get_address(addressContent, (bounty.version || 'v1') as contract_version) // Replace 'v1' with an appropriate default contract_version
+        get_address(addressContent, (bounty.version || 'v1') as contract_version /* TODO: Ensure bounty.version is reliably populated */)
     )
     .addTokens({
         tokenId: bounty.token_details.token_id || '',

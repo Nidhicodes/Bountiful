@@ -16,13 +16,14 @@ export interface Platform {
     
     // Bounty-specific methods
     submit(
-        title: string, 
-        description: string, 
-        reward: number,
-        deadline: number, 
-        min_submissions: number, 
-        creator: string, 
-        metadata: string,
+        title: string,
+        bountyContent: string, // Changed from description
+        reward_token_id: string, // Added
+        reward_amount: number,    // Changed from reward
+        deadlineBlock: number,    // Changed from deadline
+        min_submissions: number
+        // creator: string, // Removed
+        // metadata: string // Removed
     ): Promise<string | null>;
     
     submit_solution(
@@ -33,16 +34,18 @@ export interface Platform {
     
     judge_submission(
         bounty: Bounty,
-        submissionId: number,
+        submissionId: string, // Changed from number to string
         accepted: boolean
     ): Promise<string | null>;
     
-    withdraw_reward(bounty: Bounty): Promise<string | null>;
+    // withdraw(bounty: Bounty): Promise<string | null>; // Note: ErgoPlatform has (bounty, winnerAddress, submissionId)
     refund_bounty(bounty: Bounty): Promise<string | null>;
-    fetch_bounties(): Promise<Map<string, Bounty>>;
-    getBountyById(id: string): Promise<Bounty>;
-    claimBounty(bounty: Bounty): Promise<string>;
-    cancelBounty(bounty: Bounty): Promise<string>;
+    fetch_bounties(): Promise<Bounty[]>; // Changed from Map<string, Bounty>
+    getBountyById(id: string): Promise<Bounty | null>; // Changed return to Bounty | null to align with typical getById patterns
+    
+    // New/Deferred methods from user feedback, now optional
+    claimBounty?(bounty: Bounty /* other relevant params */ ): Promise<string | null>;
+    cancelBounty?(bounty: Bounty /* other relevant params */ ): Promise<string | null>;
 }
 
 export interface BountyMetadata {

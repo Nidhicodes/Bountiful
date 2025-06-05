@@ -20,6 +20,8 @@ export async function update_metadata(
 ): Promise<string|null> {
     
     // Verify current height is before deadline
+    // Note: bounty.current_height is expected to be populated by the calling application
+    // with the current blockchain height at the time of forming the transaction.
     if (bounty.current_height && bounty.deadline && bounty.current_height > bounty.deadline) {
         alert("Cannot update metadata after deadline has passed");
         return null;
@@ -43,20 +45,22 @@ export async function update_metadata(
     
     // In a real implementation, this would update the metadata root
     // based on the new content
-    const newMetadataRoot = '33333333333333333333333333333333'; // This is just a placeholder
+    const newMetadataRoot = '33333333333333333333333333333333'; // This is just a placeholder (must be 64 chars for a 32-byte hex hash)
     
     const addressContent = {
         ...bounty.constants,
         creator: bounty.creator || bounty.constants.owner // Use bounty.creator or fall back to owner
     };
 
-    // Combine the updated roots with the new content
+    // Combine the updated roots with the new content.
+    // Note: `updatedContent` (the function parameter) is expected to be the *complete new* 
+    // textual/JSON metadata content for the bounty. It replaces any previous textual content part of R9.
     const updatedBountyData = submissionsRoot + judgmentsRoot + newMetadataRoot + updatedContent;
 
     // Building the updated bounty output
     let contractOutput = new OutputBuilder(
         BigInt(bounty.value || 0),
-        get_address(addressContent, (bounty.version || 'v1') as contract_version)
+        get_address(addressContent, (bounty.version || 'v1') as contract_version /* TODO: Ensure bounty.version is reliably populated */)
     )
     .addTokens({
         tokenId: bounty.token_details.token_id || '',

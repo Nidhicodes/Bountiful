@@ -82,7 +82,7 @@ export async function mint_bounty_token(): Promise<string | undefined> {
     // For bounties, we only need 1 token (as specified in the contract)
     return mint_token(
         1,                           // Amount: 1 (as per contract requirement)
-        "BBT",                       // Name: Bountiful Bounty Token
+        "APT",                       // Name: Bountiful Bounty Token
         0,                           // Decimals: 0 (non-divisible)
         "Bountiful Bounty Platform Token - Identifies and manages a single bounty"
     );

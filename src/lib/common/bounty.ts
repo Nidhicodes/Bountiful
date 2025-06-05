@@ -19,7 +19,6 @@ export interface BountyContent {
 }
 
 export interface ConstantContent {
-    creator: string;
     raw?: string;
     owner: string;
     dev_addr: string;
@@ -28,7 +27,7 @@ export interface ConstantContent {
     token_id: string;
 }
 
-export function getBountyContent(id: string, rawContent: string): BountyContent {
+export function getBountyContent(id: string, rawContent: string): BountyContent {1
     try {
         const content = JSON.parse(rawContent);
         return {
@@ -203,7 +202,6 @@ export function parseConstants(constantsData: string): ConstantContent {
     try {
         const parsed = JSON.parse(constantsData);
         return {
-            creator: parsed.creator ?? '',
             raw: constantsData,
             owner: parsed.owner || '',
             dev_addr: parsed.dev_addr || '',
@@ -214,7 +212,6 @@ export function parseConstants(constantsData: string): ConstantContent {
     } catch (e) {
         console.error("Failed to parse constants data:", e);
         return {
-            creator: '',
             raw: constantsData,
             owner: '',
             dev_addr: '',
@@ -281,7 +278,6 @@ export function bountyFromBox(box: Box<Amount>, height: number, platform: Platfo
     
     // Parse constants
     const constants: ConstantContent = r8 ? parseConstants(r8) : {
-        creator: '',
         raw: '',
         owner: '',
         dev_addr: '',

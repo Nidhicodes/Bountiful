@@ -6,7 +6,19 @@ import { uint8ArrayToHex } from "./utils";
 import { network_id } from "./envs";
 import { get_dev_contract_hash } from "./dev/dev_contract";
 
+// Define contract version type locally or import from a central definition if preferred
 export type contract_version = "v1_0" | "v1_1";
+
+// Define return type interfaces
+export interface BountyContractDetails {
+    address: string;
+    ergoTree: string;
+}
+
+export interface MintContractDetails {
+    address: string;
+    ergoTree: string;
+}
 
 function generate_contract_v1_0(owner_addr: string, dev_fee_contract_bytes_hash: string, dev_fee: number, token_id: string) {
     return `
@@ -326,6 +338,21 @@ export function get_address(constants: ConstantContent, version: contract_versio
     return ergoTree.toAddress(network).toString();
 }
 
+export function get_bounty_contract_details(constants: ConstantContent, version: contract_version): BountyContractDetails {
+    // Log the structure of ConstantContent for review during execution
+    console.log("ConstantContent structure received by get_bounty_contract_details:", JSON.stringify(constants, null, 2));
+
+    // In case that dev_hash is undefined, we try to use the current contract hash. But the tx will fail if the hash is different.
+    let contract_script = handle_contract_generator(version)(constants.owner, constants.dev_hash ?? get_dev_contract_hash(), constants.dev_fee, constants.token_id);
+    // Ensure compile option version: 1 is used for the main bounty contract script
+    let ergoTree = compile(contract_script, {version: 1, network: network_id});
+
+    let current_network = (network_id == "mainnet") ? Network.Mainnet : Network.Testnet;
+    const address = ergoTree.toAddress(current_network).toString();
+    const ergoTreeHex = ergoTree.toHex();
+    return { address, ergoTree: ergoTreeHex };
+}
+
 export function get_template_hash(version: contract_version): string {
     try {
         const random_mainnet_addr = "9f3iPJTiciBYA6DnTeGy98CvrwyEhiP7wNrhDrQ1QeKPRhTmaqQ";
@@ -335,7 +362,7 @@ export function get_template_hash(version: contract_version): string {
 
         const contract = handle_contract_generator(version)(random_addr, random_dev_contract, 5, "");
         const ergoTree = compile(contract, {
-            version: 0, 
+            version: 1, // Changed to version 1 for consistency if main script features require it
             network: network_id
         });
         
@@ -371,37 +398,86 @@ function get_contract_hash(constants: ConstantContent, version: contract_version
 
 export function mint_contract_address(constants: ConstantContent, version: contract_version): string {
     try {
-        const contract_bytes_hash = get_contract_hash(constants, version);
-        const contract = `
+        // Ensure main contract hash is derived from a script compiled with version: 1
+        const contract_bytes_hash = get_contract_hash(constants, version); 
+        const minting_script = `
 {
   val contractBox = OUTPUTS(0)
 
   val correctSpend = {
-      val isIDT = SELF.tokens(0)._1 == contractBox.tokens(0)._1
+      // Assuming the bounty ID token is the first token in the minting box
+      val isIDT = SELF.tokens(0)._1 == contractBox.tokens(0)._1 
       val spendAll = SELF.tokens(0)._2 == contractBox.tokens(0)._2
 
       isIDT && spendAll
   }
 
   val correctContract = {
-      fromBase16("${contract_bytes_hash}") == blake2b256(contractBox.propositionBytes)
+      // Ensure the created bounty contract's script hash matches contract_bytes_hash
+      blake2b256(contractBox.propositionBytes) == fromHex("${contract_bytes_hash}")
   }
 
+  // SigmaProp ensuring both conditions are met
   sigmaProp(allOf(Coll(
       correctSpend,
       correctContract
   )))
 }
 `;
+        // Critically, compile minting script with version: 1 as it uses SELF.tokens
+        let ergoTree = compile(minting_script, {version: 1, network: network_id});
 
-   let ergoTree = compile(contract, {version: 0, network: network_id})
-
-  let network = (network_id == "mainnet") ? Network.Mainnet : Network.Testnet;
-  return ergoTree.toAddress(network).toString();
-}
+        let current_network = (network_id == "mainnet") ? Network.Mainnet : Network.Testnet;
+        const address = ergoTree.toAddress(current_network).toString();
+        
+        return address; // Return just the address string
+    }
     catch (error) {
-            console.error("Mint contract address generation failed:", error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            throw new Error(`Failed to generate mint contract address: ${errorMessage}`);
-        }
-};
+        console.error("Mint contract details generation failed:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to generate mint contract details: ${errorMessage}`);
+    }
+}
+
+// If you need both address and ergoTree elsewhere, create a separate function:
+export function mint_contract_details(constants: ConstantContent, version: contract_version): MintContractDetails {
+    try {
+        const contract_bytes_hash = get_contract_hash(constants, version); 
+        const minting_script = `
+{
+  val contractBox = OUTPUTS(0)
+
+  val correctSpend = {
+      // Assuming the bounty ID token is the first token in the minting box
+      val isIDT = SELF.tokens(0)._1 == contractBox.tokens(0)._1 
+      val spendAll = SELF.tokens(0)._2 == contractBox.tokens(0)._2
+
+      isIDT && spendAll
+  }
+
+  val correctContract = {
+      // Ensure the created bounty contract's script hash matches contract_bytes_hash
+      blake2b256(contractBox.propositionBytes) == fromHex("${contract_bytes_hash}")
+  }
+
+  // SigmaProp ensuring both conditions are met
+  sigmaProp(allOf(Coll(
+      correctSpend,
+      correctContract
+  )))
+}
+`;
+        let ergoTree = compile(minting_script, {version: 1, network: network_id});
+
+        let current_network = (network_id == "mainnet") ? Network.Mainnet : Network.Testnet;
+        const address = ergoTree.toAddress(current_network).toString();
+        const ergoTreeHex = ergoTree.toHex();
+        
+        return { address, ergoTree: ergoTreeHex };
+    }
+    catch (error) {
+        console.error("Mint contract details generation failed:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to generate mint contract details: ${errorMessage}`);
+    }
+}

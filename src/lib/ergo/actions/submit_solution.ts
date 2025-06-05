@@ -35,21 +35,25 @@ export async function submit_solution(
     
     // In a real implementation, this would update the submissions root
     // based on adding the new submission to a Merkle tree
-    const newSubmissionsRoot = '11111111111111111111111111111111'; // This is just a placeholder
+    const newSubmissionsRoot = '11111111111111111111111111111111'; // This is just a placeholder, should be a 32-byte hex string (64 chars)
     
     const addressContent = {
         ...bounty.constants,
         creator: bounty.creator || bounty.constants.owner // Use bounty.creator or fall back to owner
     };
 
+    // R9 is structured as: submissionsRootHex (64 chars) + judgmentsRootHex (64 chars) + metadataRootHex (64 chars) + actualBountyContentJsonString
+    // To get the originalBountyContent, we need to strip off these three roots.
+    const LENGTH_OF_THREE_ROOTS_HEX = 64 * 3; // 192 characters
+    const originalBountyContent = bounty.content.raw?.substring(LENGTH_OF_THREE_ROOTS_HEX) || '';
+    
     // Combine the updated roots with the original content
-    const updatedBountyData = newSubmissionsRoot + judgmentsRoot + metadataRoot + 
-                             bounty.content.raw?.substring(96) || '';
+    const updatedBountyData = newSubmissionsRoot + judgmentsRoot + metadataRoot + originalBountyContent;
 
     // Building the updated bounty output
     let contractOutput = new OutputBuilder(
         BigInt(bounty.value || 0),
-        get_address(addressContent, (bounty.version || 'v1') as contract_version)
+        get_address(addressContent, (bounty.version || 'v1') as contract_version /* TODO: Ensure bounty.version is reliably populated */)
     )
     .addTokens({
         tokenId: bounty.token_details.token_id || '',

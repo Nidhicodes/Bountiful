@@ -38,26 +38,30 @@ export async function judge_submission(
 
     // Extract existing roots from bounty data
     const submissionsRoot = bounty.content.metadata?.submissionsRoot || '';
-    const judgmentsRoot = bounty.content.metadata?.judgmentsRoot || '';
+    // const judgmentsRoot = bounty.content.metadata?.judgmentsRoot || ''; // This is the old root, will be replaced by newJudgmentsRoot
     const metadataRoot = bounty.content.metadata?.metadataRoot || '';
     
     // In a real implementation, this would update the judgments root
     // based on adding the new judgment to a Merkle tree
-    const newJudgmentsRoot = '22222222222222222222222222222222'; // This is just a placeholder
+    const newJudgmentsRoot = '22222222222222222222222222222222'; // This is just a placeholder (must be 64 chars for a 32-byte hex string)
     
     const addressContent = {
         ...bounty.constants,
         creator: bounty.creator || bounty.constants.owner // Use bounty.creator or fall back to owner
     };
 
+    // R9 is structured as: submissionsRootHex (64 chars) + judgmentsRootHex (64 chars) + metadataRootHex (64 chars) + actualBountyContentJsonString
+    // To get the originalBountyContent, we need to strip off these three roots.
+    const LENGTH_OF_THREE_ROOTS_HEX = 64 * 3; // 192 characters
+    const originalBountyContent = bounty.content.raw?.substring(LENGTH_OF_THREE_ROOTS_HEX) || '';
+
     // Combine the updated roots with the original content
-    const updatedBountyData = submissionsRoot + newJudgmentsRoot + metadataRoot + 
-                             bounty.content.raw?.substring(96) || '';
+    const updatedBountyData = submissionsRoot + newJudgmentsRoot + metadataRoot + originalBountyContent;
 
     // Building the updated bounty output
     let contractOutput = new OutputBuilder(
         BigInt(bounty.value || 0),
-        get_address(addressContent, (bounty.version || 'v1') as contract_version)
+        get_address(addressContent, (bounty.version || 'v1') as contract_version /* TODO: Ensure bounty.version is reliably populated */)
     )
     .addTokens({
         tokenId: bounty.token_details.token_id || '',

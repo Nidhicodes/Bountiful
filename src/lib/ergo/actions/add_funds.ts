@@ -12,6 +12,9 @@ import { type Bounty } from '$lib/common/bounty';
 import { get_address } from '../contract';
 import { SColl } from '@fleet-sdk/serializer';
 
+// Declare the global `ergo` object if not already done in a global d.ts file
+declare const ergo: any;
+
 /**
  * Add more funds to an existing bounty
  */
@@ -19,10 +22,14 @@ export async function add_funds(
     bounty: Bounty,
     additionalAmount: number
 ): Promise<string|null> {
+
+    if (additionalAmount <= 0) {
+        alert("Additional amount must be positive.");
+        return null;
+    }
     
     // Only the creator can add funds
-    // Ensure 'ergo' is globally available or imported
-    const walletPk = await (window as any).ergo?.get_change_address();
+    const walletPk = await ergo.get_change_address();
     
     // Verify the caller is the bounty creator
     if (walletPk !== bounty.creator) {
@@ -31,10 +38,6 @@ export async function add_funds(
     }
     
     // Get the UTXOs from the current wallet to use as inputs
-    const ergo = (window as any).ergo;
-    if (!ergo) {
-        throw new Error("Ergo wallet is not available");
-    }
     const inputs = [bounty.box, ...(await ergo.get_utxos())];
 
     // Calculate the new box value and reward amount
@@ -50,7 +53,7 @@ export async function add_funds(
     // Building the updated bounty output
     let contractOutput = new OutputBuilder(
         BigInt(newBoxValue),
-        get_address(addressContent, (bounty.version as contract_version) || 'v1') // Replace 'v1' with an appropriate default contract_version
+        get_address(addressContent, (bounty.version as contract_version) || 'v1' /* TODO: Ensure bounty.version is reliably populated */)
     )
     .addTokens({
         tokenId: bounty.token_details.token_id || '',

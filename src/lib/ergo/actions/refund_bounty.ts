@@ -8,13 +8,19 @@ import {
 import { type Bounty } from '$lib/common/bounty';
 declare const ergo: any;
 /**
- * Refund a bounty to the creator if conditions are met
+ * Refund a bounty to the creator if conditions are met (e.g., deadline passed and
+ * no accepted submissions or minimum submissions not met).
+ * Note: This function can be called by any wallet. The `walletPk` of the caller
+ * is used for paying transaction fees and receiving change. The refund always
+ * goes to the `bounty.creator`.
  */
 export async function refund_bounty(
     bounty: Bounty
 ): Promise<string|null> {
     
     // Verify deadline has passed
+    // Note: bounty.current_height is expected to be populated by the calling application
+    // with the current blockchain height at the time of forming the transaction.
     if (bounty.current_height && bounty.deadline && bounty.current_height <= bounty.deadline) {
         alert("Cannot refund before deadline");
         return null;
@@ -35,10 +41,15 @@ export async function refund_bounty(
     // Get the UTXOs from the current wallet to use as inputs
     const inputs = [bounty.box, ...(await ergo.get_utxos())];
 
+    if ((bounty.reward_amount || 0) < SAFE_MIN_BOX_VALUE) {
+        alert("Bounty reward amount is less than the minimum box value, cannot process refund as a valid output.");
+        return null;
+    }
+
     // Output for the transaction (refund to creator)
     let outputs = [
         new OutputBuilder(
-            BigInt(bounty.reward_amount || 0),
+            BigInt(bounty.reward_amount || 0), // Value checked against SAFE_MIN_BOX_VALUE above
             bounty.creator || ''
         )
     ];
