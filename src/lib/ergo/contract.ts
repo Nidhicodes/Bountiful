@@ -20,7 +20,7 @@ export interface MintContractDetails {
     ergoTree: string;
 }
 
-function generate_contract_v1_0(owner_addr: string, dev_fee_contract_bytes_hash: string, dev_fee: number, token_id: string) {
+function generate_contract_v1_0(owner_addr: string, dev_fee_contract_bytes_hash: string, dev_fee: number) {
     return `
 {
 // ===== Contract Description ===== //
@@ -308,9 +308,9 @@ sigmaProp(correctBuild && actions)
 `;
 }
 
-function generate_contract_v1_1(owner_addr: string, dev_fee_contract_bytes_hash: string, dev_fee: number, token_id: string) {
+function generate_contract_v1_1(owner_addr: string, dev_fee_contract_bytes_hash: string, dev_fee: number) {
     // Placeholder for v1.1 - implement as needed
-    return generate_contract_v1_0(owner_addr, dev_fee_contract_bytes_hash, dev_fee, token_id);
+    return generate_contract_v1_0(owner_addr, dev_fee_contract_bytes_hash, dev_fee);
 }
 
 function handle_contract_generator(version: contract_version) {
@@ -331,7 +331,7 @@ function handle_contract_generator(version: contract_version) {
 export function get_address(constants: ConstantContent, version: contract_version) {
 
     // In case that dev_hash is undefined, we try to use the current contract hash. But the tx will fail if the hash is different.
-    let contract = handle_contract_generator(version)(constants.owner, constants.dev_hash ?? get_dev_contract_hash(), constants.dev_fee, constants.token_id);
+    let contract = handle_contract_generator(version)(constants.owner, constants.dev_hash ?? get_dev_contract_hash(), constants.dev_fee);
     let ergoTree = compile(contract, {version: 1, network: network_id})
 
     let network = (network_id == "mainnet") ? Network.Mainnet : Network.Testnet;
@@ -343,7 +343,7 @@ export function get_bounty_contract_details(constants: ConstantContent, version:
     console.log("ConstantContent structure received by get_bounty_contract_details:", JSON.stringify(constants, null, 2));
 
     // In case that dev_hash is undefined, we try to use the current contract hash. But the tx will fail if the hash is different.
-    let contract_script = handle_contract_generator(version)(constants.owner, constants.dev_hash ?? get_dev_contract_hash(), constants.dev_fee, constants.token_id);
+    let contract_script = handle_contract_generator(version)(constants.owner, constants.dev_hash ?? get_dev_contract_hash(), constants.dev_fee);
     // Ensure compile option version: 1 is used for the main bounty contract script
     let ergoTree = compile(contract_script, {version: 1, network: network_id});
 
@@ -360,7 +360,7 @@ export function get_template_hash(version: contract_version): string {
         const random_addr = network_id === "mainnet" ? random_mainnet_addr : random_testnet_addr;
         const random_dev_contract = uint8ArrayToHex(blake2b256("9a3d2f6b"));
 
-        const contract = handle_contract_generator(version)(random_addr, random_dev_contract, 5, "");
+        const contract = handle_contract_generator(version)(random_addr, random_dev_contract, 5);
         const ergoTree = compile(contract, {
             version: 1, // Changed to version 1 for consistency if main script features require it
             network: network_id
@@ -380,11 +380,11 @@ function get_contract_hash(constants: ConstantContent, version: contract_version
             constants.owner, 
             constants.dev_hash ?? get_dev_contract_hash(), 
             constants.dev_fee, 
-            constants.token_id
+            
         );
         
         const ergoTree = compile(contract, {
-            version: 0, 
+            version: 1, 
             network: network_id
         });
         
@@ -414,7 +414,7 @@ export function mint_contract_address(constants: ConstantContent, version: contr
 
   val correctContract = {
       // Ensure the created bounty contract's script hash matches contract_bytes_hash
-      blake2b256(contractBox.propositionBytes) == fromHex("${contract_bytes_hash}")
+      blake2b256(contractBox.propositionBytes) == fromBase16("${contract_bytes_hash}")
   }
 
   // SigmaProp ensuring both conditions are met
@@ -457,7 +457,7 @@ export function mint_contract_details(constants: ConstantContent, version: contr
 
   val correctContract = {
       // Ensure the created bounty contract's script hash matches contract_bytes_hash
-      blake2b256(contractBox.propositionBytes) == fromHex("${contract_bytes_hash}")
+      blake2b256(contractBox.propositionBytes) == fromBase16("${contract_bytes_hash}")
   }
 
   // SigmaProp ensuring both conditions are met

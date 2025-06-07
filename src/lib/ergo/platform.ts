@@ -102,11 +102,11 @@ export class ErgoPlatform implements Platform {
 
   async get_balance(id?: string): Promise<Map<string, number>> {
     const balanceMap = new Map<string, number>();
-    
+
     if (!window.ergo) {
       throw new Error('Ergo API not available');
     }
-    
+
     const addr = await window.ergo.get_change_address();
 
     if (addr) {
@@ -138,35 +138,66 @@ export class ErgoPlatform implements Platform {
   }
 
   // --- Core Bounty Management ---
-  async submit(
-    title: string,                 // Bounty Title
-    bountyContent: string,         // Main description/JSON metadata for the bounty
-    reward_token_id: string,       // ID of the reward token (empty for ERG)
-    reward_amount: number,         // Reward amount in nanoERG (if ERG reward) or smallest unit (if token reward)
-    deadlineBlock: number,         // Deadline as a block height
-    min_submissions: number       // Minimum number of submissions required
-  ): Promise<string | null> {
-    try {
-      const result = await submit_bounty(
-        this.last_version,       // contract_version from contract.ts (e.g. "v1_0" or "v1_1")
-        reward_token_id,
-        reward_amount,
-        deadlineBlock,
-        reward_amount,          // Reward amount in ERG (same as reward_amount for ERG rewards)
-        bountyContent,          // bountyContent is passed directly
-        min_submissions,        // Minimum participants required
-        title
-      );
-      return result;
-    } catch (error) {
-      console.error('Failed to submit bounty via ErgoPlatform:', error);
-      return null;
+ async submit(
+  title: string,                 // Bounty Title
+  bountyContent: string,         // Main description/JSON metadata for the bounty
+  reward_token_id: string,       // ID of the reward token (empty for ERG)
+  reward_amount: number,         // Reward amount in nanoERG (if ERG reward) or smallest unit (if token reward)
+  deadlineBlock: number,         // Deadline as a block height
+  min_submissions: number       // Minimum number of submissions required
+): Promise<string | null> {
+  console.log("[platform.ts] submit: Start", { title, bountyContent, reward_token_id, reward_amount, deadlineBlock, min_submissions });
+  try {
+    console.log("[platform.ts] submit: Before submit_bounty()");
+    const result = await submit_bounty(
+      this.last_version,
+      reward_token_id,      // contract_version from contract.ts (e.g. "v1_0" or "v1_1")
+      deadlineBlock,
+      reward_amount,          // Reward amount in ERG (same as reward_amount for ERG rewards)
+      bountyContent,          // bountyContent is passed directly
+      min_submissions,        // Minimum participants required
+      title
+    );
+    console.log("[platform.ts] submit: After submit_bounty()", { result });
+    return result;
+  } catch (error) {
+    console.log("[platform.ts] submit: Catch block", { error });
+    console.error('Failed to submit bounty via ErgoPlatform:', error);
+    
+    // Handle different error types properly
+    if (error && typeof error === 'object') {
+      // If it's an error object with specific properties (like the Ergo wallet error)
+      if ('code' in error && 'info' in error) {
+        const ergoError = error as { code: number; info: string };
+        throw new Error(`Ergo transaction error (code: ${ergoError.code}): ${ergoError.info}`);
+      }
+      // If it's a standard Error object
+      if (error instanceof Error) {
+        throw error; // Re-throw the original error
+      }
+      // If it's some other object, try to extract meaningful info
+      const errorMessage = (error as any).message || JSON.stringify(error);
+      throw new Error(`Transaction failed: ${errorMessage}`);
     }
+    
+    // If it's a string error
+    if (typeof error === 'string') {
+      throw new Error(`Transaction failed: ${error}`);
+    }
+    
+    // Last resort fallback
+    throw new Error('Unknown transaction error occurred');
   }
+}
 
   // Keep the original method for backward compatibility
   async withdraw(bounty: Bounty, winnerAddress: string, submissionId: string): Promise<string | null> {
-    return this.withdraw(bounty, winnerAddress, submissionId);
+    try {
+      return await withdraw(bounty, winnerAddress, submissionId);
+    } catch (error) {
+      console.error('Failed to withdraw bounty reward:', error);
+      return null;
+    }
   }
 
   async refund_bounty(bounty: Bounty): Promise<string | null> {
@@ -180,7 +211,7 @@ export class ErgoPlatform implements Platform {
 
   async fetch_bounties(): Promise<Bounty[]> {
     try {
-      const bountyMap: Map<string, Bounty> = await fetchBountiesFromExplorer(); 
+      const bountyMap: Map<string, Bounty> = await fetchBountiesFromExplorer();
       const bountiesArray: Bounty[] = Array.from(bountyMap.values());
       return bountiesArray;
     } catch (error) {
@@ -249,7 +280,7 @@ export class ErgoPlatform implements Platform {
         timestamp: Date.now(),
         judgedBy: this.creatorAddress
       });
-      
+
       return await judge_submission(bounty, submissionId, accepted, judgmentData);
     } catch (error) {
       console.error('Failed to judge submission:', error);
@@ -263,7 +294,7 @@ export class ErgoPlatform implements Platform {
 
   async getAllBounties(): Promise<Bounty[]> {
     try {
-      return await this.fetch_bounties(); 
+      return await this.fetch_bounties();
     } catch (error) {
       console.error('Failed to get all bounties in ErgoPlatform:', error);
       return [];
@@ -290,7 +321,7 @@ export class ErgoPlatform implements Platform {
       const emptyRoot = new Uint8Array(32).fill(0);
       const combined = new Uint8Array(96);
       combined.set(emptyRoot, 0);
-      combined.set(emptyRoot, 32);  
+      combined.set(emptyRoot, 32);
       combined.set(metadataHash, 64);
       return Array.from(combined)
         .map(b => b.toString(16).padStart(2, '0'))
@@ -328,7 +359,7 @@ export class ErgoPlatform implements Platform {
       const totalSubmissions = bounty.total_submissions ?? 0;
       const minSubmissions = bounty.min_submissions ?? 0;
       const acceptedSubmissions = bounty.accepted_submissions ?? 0;
-      
+
       return (
         currentHeight > deadline &&
         (totalSubmissions < minSubmissions || acceptedSubmissions === 0)
@@ -343,7 +374,7 @@ export class ErgoPlatform implements Platform {
       const totalSubmissions = bounty.total_submissions ?? 0;
       const minSubmissions = bounty.min_submissions ?? 0;
       const acceptedSubmissions = bounty.accepted_submissions ?? 0;
-      
+
       return (
         acceptedSubmissions > 0 &&
         totalSubmissions >= minSubmissions
@@ -363,12 +394,12 @@ export class ErgoPlatform implements Platform {
   }
 
   async claimBounty(bounty: Bounty): Promise<string | null> {
-      console.warn("claimBounty is not yet implemented for ErgoPlatform.");
-      return null;
+    console.warn("claimBounty is not yet implemented for ErgoPlatform.");
+    return null;
   }
 
   async cancelBounty(bounty: Bounty): Promise<string | null> {
-      console.warn("cancelBounty is not yet implemented for ErgoPlatform.");
-      return null;
+    console.warn("cancelBounty is not yet implemented for ErgoPlatform.");
+    return null;
   }
 }

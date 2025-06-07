@@ -8,6 +8,8 @@
   import { Input } from "$lib/components/ui/input";
   import { onMount } from "svelte";
 
+  console.log("🔄 NewBounty.svelte: Script started loading");
+
   // Types
   interface BountyContent {
     title: string;
@@ -29,6 +31,8 @@
   const MAX_DEADLINE_DAYS = 365;
   const MAX_MIN_SUBMISSIONS = 100;
 
+  console.log("📋 Constants defined:", { MIN_ERG_AMOUNT, ERG_DECIMALS, MAX_DEADLINE_DAYS, MAX_MIN_SUBMISSIONS });
+
   let platform: ErgoPlatform | null = null;
   let platformInitialized = false;
   let initializationError: string | null = null;
@@ -47,7 +51,6 @@
   let errorMessage: string | null = null;
   let successMessage: string | null = null;
   let isSubmitting: boolean = false;
-  let debugLog: string[] = [];
 
   // Blockchain data
   let currentHeight: number | null = null;
@@ -55,95 +58,134 @@
   let deadlineText: string = "";
   let ergBalance: number = 0;
 
-  // Debug logging function
-  function addDebugLog(message: string): void {
-    const timestamp = new Date().toLocaleTimeString();
-    debugLog = [...debugLog, `[${timestamp}] ${message}`];
-    console.log(`[Bounty Debug] ${message}`);
-  }
+  console.log("🔢 Initial state set:", {
+    platform,
+    platformInitialized,
+    isSubmitting,
+    currentHeight,
+    ergBalance
+  });
 
   $: if (deadlineDays > 0 && currentHeight !== null && platform) {
+    console.log("⏰ Reactive statement triggered for deadline calculation");
     calculateDeadline(deadlineDays);
   }
 
   async function initializePlatform(): Promise<void> {
+    console.log("🚀 initializePlatform: START");
+    
     try {
-      addDebugLog("Initializing ErgoPlatform...");
+      console.log("📦 initializePlatform: Creating new ErgoPlatform instance...");
       platform = new ErgoPlatform();
+      console.log("✅ initializePlatform: ErgoPlatform instance created:", platform);
       
       // Test platform connection
+      console.log("🔍 initializePlatform: Testing platform methods...");
+      console.log("🔍 initializePlatform: get_current_height method exists:", typeof platform.get_current_height === 'function');
+      
       if (typeof platform.get_current_height === 'function') {
-        addDebugLog("Platform methods available");
         platformInitialized = true;
         initializationError = null;
+        console.log("🎉 initializePlatform: Platform initialized successfully!");
       } else {
+        console.log("❌ initializePlatform: Platform methods not available");
         throw new Error("Platform methods not available");
       }
     } catch (error) {
-      addDebugLog(`Platform initialization failed: ${error}`);
+      console.error("❌ initializePlatform: ERROR:", error);
       initializationError = error instanceof Error ? error.message : "Unknown initialization error";
       platformInitialized = false;
+      console.log("❌ initializePlatform: Set platformInitialized to false");
     }
+    
+    console.log("🏁 initializePlatform: END - platformInitialized:", platformInitialized);
   }
 
   async function calculateDeadline(days: number): Promise<void> {
+    console.log("📅 calculateDeadline: START with days:", days);
+    
     if (!platform) {
-      addDebugLog("Cannot calculate deadline - platform not initialized");
+      console.log("❌ calculateDeadline: No platform available");
       return;
     }
 
     try {
-      addDebugLog(`Calculating deadline for ${days} days...`);
+      console.log("📅 calculateDeadline: Calculating target date...");
       const targetDate = new Date();
       targetDate.setTime(targetDate.getTime() + days * 24 * 60 * 60 * 1000);
+      console.log("📅 calculateDeadline: Target date:", targetDate);
+      
+      console.log("📅 calculateDeadline: Converting to block...");
       deadlineBlock = await time_to_block(targetDate.getTime(), platform);
+      console.log("📅 calculateDeadline: Deadline block:", deadlineBlock);
+      
+      console.log("📅 calculateDeadline: Converting block to date text...");
       deadlineText = await block_to_date(deadlineBlock, platform);
-      addDebugLog(`Deadline calculated: Block ${deadlineBlock}, Date: ${deadlineText}`);
+      console.log("📅 calculateDeadline: Deadline text:", deadlineText);
     } catch (error) {
-      addDebugLog(`Error calculating deadline: ${error}`);
+      console.error("❌ calculateDeadline: ERROR:", error);
       deadlineText = "Error calculating deadline";
     }
+    
+    console.log("🏁 calculateDeadline: END");
   }
 
   async function getCurrentHeight(): Promise<void> {
+    console.log("📏 getCurrentHeight: START");
+    
     if (!platform) {
-      addDebugLog("Cannot get current height - platform not initialized");
+      console.log("❌ getCurrentHeight: No platform available");
       return;
     }
 
     try {
-      addDebugLog("Fetching current blockchain height...");
+      console.log("📏 getCurrentHeight: Calling platform.get_current_height()...");
       currentHeight = await platform.get_current_height();
-      addDebugLog(`Current height: ${currentHeight}`);
+      console.log("✅ getCurrentHeight: Current height:", currentHeight);
     } catch (error) {
-      addDebugLog(`Error fetching current height: ${error}`);
+      console.error("❌ getCurrentHeight: ERROR:", error);
       errorMessage = "Failed to connect to blockchain";
     }
+    
+    console.log("🏁 getCurrentHeight: END");
   }
 
   async function getErgBalance(): Promise<void> {
+    console.log("💰 getErgBalance: START");
+    
     if (!platform) {
-      addDebugLog("Cannot get ERG balance - platform not initialized");
+      console.log("❌ getErgBalance: No platform available");
       return;
     }
 
     try {
-      addDebugLog("Fetching ERG balance...");
+      console.log("💰 getErgBalance: Calling platform.get_balance()...");
       const tokens = await platform.get_balance();
+      console.log("💰 getErgBalance: Tokens received:", tokens);
+      
       ergBalance = tokens.get("ERG") || 0;
       const ergBalanceDecimal = ergBalance / Math.pow(10, ERG_DECIMALS);
-      addDebugLog(`ERG balance: ${ergBalanceDecimal} ERG (${ergBalance} raw)`);
+      console.log("💰 getErgBalance: ERG balance raw:", ergBalance);
+      console.log("💰 getErgBalance: ERG balance decimal:", ergBalanceDecimal);
     } catch (error) {
-      addDebugLog(`Error fetching ERG balance: ${error}`);
+      console.error("❌ getErgBalance: ERROR:", error);
       errorMessage = "Failed to load ERG balance. Please ensure your wallet is connected.";
     }
+    
+    console.log("🏁 getErgBalance: END");
   }
 
   function calculateRewardAmountRaw(): number {
-    return Math.floor(rewardAmount * Math.pow(10, ERG_DECIMALS));
+    console.log("🧮 calculateRewardAmountRaw: START");
+    const rawAmount = Math.floor(rewardAmount * Math.pow(10, ERG_DECIMALS));
+    console.log("🧮 calculateRewardAmountRaw: Input amount:", rewardAmount);
+    console.log("🧮 calculateRewardAmountRaw: Raw amount:", rawAmount);
+    console.log("🏁 calculateRewardAmountRaw: END");
+    return rawAmount;
   }
 
   function resetForm(): void {
+    console.log("🔄 resetForm: START");
     bountyTitle = "";
     bountyDescription = "";
     bountyCategory = "General";
@@ -151,104 +193,154 @@
     rewardAmount = MIN_ERG_AMOUNT;
     deadlineDays = 30;
     minSubmissions = 1;
-    addDebugLog("Form reset");
+    console.log("✅ resetForm: Form reset complete");
+    console.log("🏁 resetForm: END");
   }
 
   function clearMessages(): void {
+    console.log("🧹 clearMessages: START");
     errorMessage = null;
     successMessage = null;
+    console.log("✅ clearMessages: Messages cleared");
+    console.log("🏁 clearMessages: END");
   }
 
   function parseTags(tagsString: string): string[] {
-    return tagsString
+    console.log("🏷️ parseTags: START with input:", tagsString);
+    const tags = tagsString
       .split(",")
       .map(tag => tag.trim())
       .filter(tag => tag.length > 0);
+    console.log("🏷️ parseTags: Parsed tags:", tags);
+    console.log("🏁 parseTags: END");
+    return tags;
   }
 
   function validateForm(): boolean {
-    addDebugLog("Starting form validation...");
+    console.log("✅ validateForm: START");
+    console.log("✅ validateForm: Current form values:", {
+      bountyTitle: bountyTitle,
+      bountyDescription: bountyDescription,
+      rewardAmount: rewardAmount,
+      minSubmissions: minSubmissions,
+      deadlineDays: deadlineDays,
+      ergBalance: ergBalance
+    });
+    
     clearMessages();
     
+    console.log("✅ validateForm: Checking title...");
     if (!bountyTitle.trim()) {
+      console.log("❌ validateForm: Title validation failed");
       errorMessage = "Title is required";
-      addDebugLog("Validation failed: Title is required");
       return false;
     }
+    console.log("✅ validateForm: Title OK");
     
+    console.log("✅ validateForm: Checking description...");
     if (!bountyDescription.trim()) {
+      console.log("❌ validateForm: Description validation failed");
       errorMessage = "Description is required";
-      addDebugLog("Validation failed: Description is required");
       return false;
     }
+    console.log("✅ validateForm: Description OK");
     
+    console.log("✅ validateForm: Checking reward amount > 0...");
     if (rewardAmount <= 0) {
+      console.log("❌ validateForm: Reward amount <= 0");
       errorMessage = "Reward amount must be greater than 0";
-      addDebugLog("Validation failed: Reward amount must be greater than 0");
       return false;
     }
+    console.log("✅ validateForm: Reward amount > 0 OK");
     
+    console.log("✅ validateForm: Checking minimum ERG amount...");
     if (rewardAmount < MIN_ERG_AMOUNT) {
+      console.log("❌ validateForm: Reward amount below minimum");
       errorMessage = `Minimum ERG reward is ${MIN_ERG_AMOUNT}`;
-      addDebugLog(`Validation failed: Minimum ERG reward is ${MIN_ERG_AMOUNT}`);
       return false;
     }
+    console.log("✅ validateForm: Minimum ERG amount OK");
     
+    console.log("✅ validateForm: Checking ERG balance...");
     const ergBalanceDecimal = ergBalance / Math.pow(10, ERG_DECIMALS);
+    console.log("✅ validateForm: ERG balance decimal:", ergBalanceDecimal);
     if (rewardAmount > ergBalanceDecimal) {
+      console.log("❌ validateForm: Insufficient ERG balance");
       errorMessage = `Insufficient ERG balance. Available: ${ergBalanceDecimal.toFixed(ERG_DECIMALS)} ERG`;
-      addDebugLog(`Validation failed: Insufficient balance. Required: ${rewardAmount}, Available: ${ergBalanceDecimal}`);
       return false;
     }
+    console.log("✅ validateForm: ERG balance OK");
     
+    console.log("✅ validateForm: Checking min submissions...");
     if (minSubmissions < 1 || minSubmissions > MAX_MIN_SUBMISSIONS) {
+      console.log("❌ validateForm: Min submissions out of range");
       errorMessage = `Minimum submissions must be between 1 and ${MAX_MIN_SUBMISSIONS}`;
-      addDebugLog(`Validation failed: Invalid minimum submissions: ${minSubmissions}`);
       return false;
     }
+    console.log("✅ validateForm: Min submissions OK");
     
+    console.log("✅ validateForm: Checking deadline days...");
     if (deadlineDays < 1 || deadlineDays > MAX_DEADLINE_DAYS) {
+      console.log("❌ validateForm: Deadline days out of range");
       errorMessage = `Deadline must be between 1 and ${MAX_DEADLINE_DAYS} days`;
-      addDebugLog(`Validation failed: Invalid deadline days: ${deadlineDays}`);
       return false;
     }
+    console.log("✅ validateForm: Deadline days OK");
 
+    console.log("✅ validateForm: Checking raw amount...");
     const rawAmount = calculateRewardAmountRaw();
     if (rawAmount === 0) {
+      console.log("❌ validateForm: Raw amount is 0");
       errorMessage = "Reward amount too small";
-      addDebugLog("Validation failed: Reward amount too small");
       return false;
     }
+    console.log("✅ validateForm: Raw amount OK");
 
-    addDebugLog("Form validation passed");
+    console.log("🎉 validateForm: ALL VALIDATIONS PASSED!");
+    console.log("🏁 validateForm: END - returning true");
     return true;
   }
 
   async function handleSubmit(): Promise<void> {
-    addDebugLog("=== SUBMIT BUTTON CLICKED ===");
+    console.log("🚀🚀🚀 handleSubmit: BUTTON CLICKED - START 🚀🚀🚀");
+    console.log("🚀 handleSubmit: Current timestamp:", new Date().toISOString());
     
     // Check if platform is initialized
+    console.log("🔍 handleSubmit: Checking platform initialization...");
+    console.log("🔍 handleSubmit: platformInitialized:", platformInitialized);
+    console.log("🔍 handleSubmit: platform object:", platform);
+    
     if (!platformInitialized || !platform) {
+      console.log("❌ handleSubmit: Platform not initialized - EARLY RETURN");
       errorMessage = "Platform not initialized. Please refresh the page and ensure your wallet is connected.";
-      addDebugLog("Submit failed: Platform not initialized");
       return;
     }
+    console.log("✅ handleSubmit: Platform check passed");
 
+    console.log("🔍 handleSubmit: Before validateForm() call");
     // Validate form
-    if (!validateForm()) {
-      addDebugLog("Submit failed: Form validation failed");
+    const isValid = validateForm();
+    console.log("🔍 handleSubmit: validateForm() returned:", isValid);
+    
+    if (!isValid) {
+      console.log("❌ handleSubmit: Form validation failed - EARLY RETURN");
       return;
     }
+    console.log("✅ handleSubmit: Form validation passed");
 
+    console.log("🔄 handleSubmit: Setting isSubmitting to true");
     isSubmitting = true;
     errorMessage = null;
     transactionId = null;
-    addDebugLog("Starting bounty submission...");
 
     try {
+      console.log("🔥 handleSubmit: TRY BLOCK STARTED");
+      
+      console.log("🧮 handleSubmit: Calculating reward amount...");
       const rewardAmountRaw = calculateRewardAmountRaw();
-      addDebugLog(`Reward amount raw: ${rewardAmountRaw}`);
+      console.log("💰 handleSubmit: Reward amount raw:", rewardAmountRaw);
 
+      console.log("📝 handleSubmit: Creating bounty content object...");
       const bountyContent: BountyContent = {
         title: bountyTitle.trim(),
         description: bountyDescription.trim(),
@@ -262,10 +354,16 @@
           decimals: ERG_DECIMALS,
         },
       };
+      console.log("📝 handleSubmit: Bounty content:", bountyContent);
 
-      addDebugLog(`Bounty content: ${JSON.stringify(bountyContent, null, 2)}`);
-      addDebugLog(`Submitting to platform with deadline block: ${deadlineBlock}, min submissions: ${minSubmissions}`);
-
+      console.log("🚀 handleSubmit: CALLING platform.submit() with parameters:");
+      console.log("   - title:", bountyTitle.trim());
+      console.log("   - content:", JSON.stringify(bountyContent));
+      console.log("   - token: ''");
+      console.log("   - amount:", rewardAmountRaw);
+      console.log("   - deadline:", deadlineBlock);
+      console.log("   - minSubmissions:", minSubmissions);
+      
       const txId = await platform.submit(
         bountyTitle.trim(),
         JSON.stringify(bountyContent),
@@ -274,72 +372,98 @@
         deadlineBlock,
         minSubmissions
       );
-
-      addDebugLog(`Platform.submit returned: ${txId}`);
+      
+      console.log("✅ handleSubmit: platform.submit() completed with txId:", txId);
 
       if (!txId) {
+        console.log("❌ handleSubmit: No transaction ID returned - throwing error");
         throw new Error("Transaction failed - no transaction ID returned");
       }
 
+      console.log("🎉 handleSubmit: Transaction successful!");
       transactionId = txId;
       successMessage = `Bounty created successfully!`;
-      addDebugLog(`Bounty created successfully with txId: ${txId}`);
+      
+      console.log("🔄 handleSubmit: Resetting form...");
       resetForm();
+      
+      console.log("💰 handleSubmit: Refreshing ERG balance...");
       await getErgBalance(); // Refresh balance after successful submission
+      
+      console.log("🎊 handleSubmit: SUCCESS FLOW COMPLETED");
 
     } catch (error) {
-      addDebugLog(`Error creating bounty: ${error}`);
-      console.error("Error creating bounty:", error);
+      console.log("💥💥💥 handleSubmit: CATCH BLOCK - ERROR OCCURRED 💥💥💥");
+      console.error("💥 handleSubmit: Error details:", error);
+      console.error("💥 handleSubmit: Error type:", typeof error);
+      console.error("💥 handleSubmit: Error constructor:", error?.constructor?.name);
       
       if (error instanceof Error) {
+        console.log("💥 handleSubmit: Error message:", error.message);
+        console.log("💥 handleSubmit: Error stack:", error.stack);
         errorMessage = `Failed to create bounty: ${error.message}`;
       } else {
+        console.log("💥 handleSubmit: Unknown error type");
         errorMessage = "Failed to create bounty. Please try again.";
       }
+      
+      console.log("💥 handleSubmit: Error message set to:", errorMessage);
     } finally {
+      console.log("🏁 handleSubmit: FINALLY BLOCK");
+      console.log("🏁 handleSubmit: Setting isSubmitting to false");
       isSubmitting = false;
-      addDebugLog("Submit process completed");
+      console.log("🏁 handleSubmit: isSubmitting now:", isSubmitting);
     }
+    
+    console.log("🏁🏁🏁 handleSubmit: COMPLETE END 🏁🏁🏁");
   }
 
-  // Test button functionality
-  function testButton(): void {
-    addDebugLog("Test button clicked - button is working!");
-    alert("Button click is working! Check console for debug logs.");
+  // Button click handler with logging
+  function onButtonClick() {
+    console.log("🔘🔘🔘 BUTTON CLICK EVENT FIRED 🔘🔘🔘");
+    console.log("🔘 Button state check:");
+    console.log("   - isSubmitting:", isSubmitting);
+    console.log("   - platformInitialized:", platformInitialized);
+    console.log("   - button should be disabled:", isSubmitting || !platformInitialized);
+    
+    if (isSubmitting || !platformInitialized) {
+      console.log("⚠️ Button is disabled, but click event still fired!");
+      return;
+    }
+    
+    console.log("✅ Button click proceeding to handleSubmit...");
+    handleSubmit();
   }
 
   onMount(async () => {
-    addDebugLog("Component mounted");
+    console.log("🎬 onMount: START");
     
+    console.log("🔧 onMount: Calling initializePlatform...");
     await initializePlatform();
+    console.log("🔧 onMount: initializePlatform completed");
     
     if (platformInitialized && platform) {
+      console.log("✅ onMount: Platform ready, getting blockchain data...");
+      
+      console.log("📏 onMount: Getting current height...");
       await getCurrentHeight();
+      
+      console.log("💰 onMount: Getting ERG balance...");
       await getErgBalance();
+      
+      console.log("✅ onMount: Blockchain data retrieval completed");
+    } else {
+      console.log("❌ onMount: Platform not ready, skipping blockchain data retrieval");
     }
     
-    addDebugLog("Component initialization completed");
+    console.log("🏁 onMount: END");
   });
+
+  console.log("✅ NewBounty.svelte: Script loading completed");
 </script>
 
 <div class="container mx-auto py-4">
   <h2 class="bounty-title">Create New Bounty</h2>
-
-  <!-- Debug Panel (remove in production) -->
-  <div class="debug-panel bg-gray-900/80 backdrop-blur-lg rounded-xl p-4 mb-6 max-h-40 overflow-y-auto">
-    <h3 class="text-sm font-bold text-orange-400 mb-2">Debug Log:</h3>
-    <div class="text-xs text-gray-300 space-y-1">
-      {#each debugLog.slice(-10) as log}
-        <div>{log}</div>
-      {/each}
-    </div>
-    <button 
-      on:click={testButton}
-      class="mt-2 px-3 py-1 bg-blue-500 text-white text-xs rounded"
-    >
-      Test Button
-    </button>
-  </div>
 
   <!-- Status Panel -->
   <div class="status-panel bg-background/80 backdrop-blur-lg rounded-xl p-4 mb-6">
@@ -376,7 +500,10 @@
           placeholder="Enter a clear, descriptive title" 
           required 
           class="w-full border-orange-500/20 focus:border-orange-500/40 focus:ring-orange-500/20 focus:ring-1" 
-          on:input={clearMessages}
+          on:input={() => {
+            console.log("📝 Title input changed:", bountyTitle);
+            clearMessages();
+          }}
         />
       </div>
 
@@ -392,7 +519,10 @@
           placeholder={MIN_ERG_AMOUNT.toString()}
           required
           class="w-full border-orange-500/20 focus:border-orange-500/40 focus:ring-orange-500/20 focus:ring-1"
-          on:input={clearMessages}
+          on:input={() => {
+            console.log("💰 Reward amount changed:", rewardAmount);
+            clearMessages();
+          }}
         />
         <p class="text-sm mt-2 text-muted-foreground">
           Available: {(ergBalance / Math.pow(10, ERG_DECIMALS)).toFixed(ERG_DECIMALS)} ERG
@@ -413,7 +543,10 @@
           placeholder="30"
           required
           class="w-full border-orange-500/20 focus:border-orange-500/40 focus:ring-orange-500/20 focus:ring-1"
-          on:input={clearMessages}
+          on:input={() => {
+            console.log("📅 Deadline days changed:", deadlineDays);
+            clearMessages();
+          }}
         />
         <p class="text-sm mt-2 text-muted-foreground">
           {#if deadlineText}
@@ -434,7 +567,10 @@
           placeholder="1"
           required
           class="w-full border-orange-500/20 focus:border-orange-500/40 focus:ring-orange-500/20 focus:ring-1"
-          on:input={clearMessages}
+          on:input={() => {
+            console.log("🔢 Min submissions changed:", minSubmissions);
+            clearMessages();
+          }}
         />
       </div>
 
@@ -447,7 +583,10 @@
           bind:value={bountyCategory}
           placeholder="Development, Design, Research, etc."
           class="w-full border-orange-500/20 focus:border-orange-500/40 focus:ring-orange-500/20 focus:ring-1"
-          on:input={clearMessages}
+          on:input={() => {
+            console.log("📂 Category changed:", bountyCategory);
+            clearMessages();
+          }}
         />
       </div>
 
@@ -460,7 +599,10 @@
           bind:value={bountyTags}
           placeholder="JavaScript, React, API, Smart Contract, etc."
           class="w-full border-orange-500/20 focus:border-orange-500/40 focus:ring-orange-500/20 focus:ring-1"
-          on:input={clearMessages}
+          on:input={() => {
+            console.log("🏷️ Tags changed:", bountyTags);
+            clearMessages();
+          }}
         />
       </div>
 
@@ -473,45 +615,50 @@
           placeholder="Provide detailed requirements, acceptance criteria, and any specific instructions..."
           required
           class="w-full h-32 border-orange-500/20 focus:border-orange-500/40 focus:ring-orange-500/20 focus:ring-1"
-          on:input={clearMessages}
+          on:input={() => {
+            console.log("📝 Description changed, length:", bountyDescription.length);
+            clearMessages();
+          }}
         />
       </div>
     </div>
 
     <!-- Messages and Submit Button -->
     <div class="form-actions mt-6 flex flex-col items-center gap-4">
-      {#if transactionId}
-        <div class="result bg-background/80 backdrop-blur-lg border border-orange-500/20 rounded-lg p-4 w-full max-w-xl">
-          <p class="text-center">
-            <strong>Bounty created successfully!</strong>
-            <br>
-            <a href="{web_explorer_uri_tx + transactionId}" target="_blank" rel="noopener noreferrer" class="text-orange-400 hover:text-orange-300 underline transition-colors">
-              View transaction on explorer
-            </a>
-          </p>
-        </div>
-      {:else}
-        {#if errorMessage}
-          <div class="error-message bg-red-500/10 border border-red-500/20 rounded-lg p-4 w-full max-w-xl text-center text-red-500">
-            {errorMessage}
-          </div>
-        {/if}
-
-        <Button 
-          on:click={handleSubmit}
-
-          class="bg-orange-500 hover:bg-orange-600 text-black border-none py-2 px-6 text-lg font-semibold rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none"
-        >
-          {#if !platformInitialized}
-            Platform Not Ready
-          {:else if isSubmitting}
-            Creating Bounty...
-          {:else}
-            Create Bounty
-          {/if}
-        </Button>
-      {/if}
+  {#if transactionId}
+    <div class="result bg-background/80 backdrop-blur-lg border border-orange-500/20 rounded-lg p-4 w-full max-w-xl">
+      <p class="text-center">
+        <strong>Bounty created successfully!</strong>
+        <br>
+        <a href="{web_explorer_uri_tx + transactionId}" target="_blank" rel="noopener noreferrer" class="text-orange-400 hover:text-orange-300 underline transition-colors">
+          View transaction on explorer
+        </a>
+      </p>
     </div>
+  {:else}
+    {#if errorMessage}
+      <div class="error-message bg-red-500/10 border border-red-500/20 rounded-lg p-4 w-full max-w-xl text-center text-red-500">
+        {errorMessage}
+      </div>
+    {/if}
+
+    <!-- Fixed button with proper event handling -->
+    <button
+      on:click|preventDefault={onButtonClick}
+      disabled={isSubmitting || !platformInitialized}
+      class="bg-orange-500 hover:bg-orange-600 text-black border-none py-2 px-6 text-lg font-semibold rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none disabled:cursor-not-allowed"
+      type="button"
+    >
+      {#if !platformInitialized}
+        Platform Not Ready
+      {:else if isSubmitting}
+        Waiting for confirmation of the project creation...
+      {:else}
+        Create Bounty
+      {/if}
+    </button>
+  {/if}
+</div>
   </div>
 </div>
 
@@ -548,10 +695,6 @@
 
     .form-container {
         animation: fadeIn 0.5s ease-in;
-    }
-
-    .debug-panel {
-        font-family: 'Courier New', monospace;
     }
 
     @keyframes fadeIn {

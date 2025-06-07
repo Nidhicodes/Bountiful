@@ -107,9 +107,9 @@ export async function wait_until_confirmation(tx_id: string): Promise<Box | null
         }
 
         // Check if 5 minutes have passed
-        if (Date.now() - startTime > 5 * 60 * 1000) {
-            return null;
-        }
+        // if (Date.now() - startTime > 5 * 60 * 1000) {
+        //     return null;
+        // }
 
         // Wait for 5 seconds before retrying
         await new Promise(resolve => setTimeout(resolve, 5000));
