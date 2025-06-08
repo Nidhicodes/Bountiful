@@ -3,7 +3,7 @@
 */
 
 import { type Box, SAFE_MIN_BOX_VALUE } from "@fleet-sdk/core";
-import { type Bounty, type TokenEIP4, getBountyContent } from "../common/bounty";
+import { type Bounty, type TokenEIP4, getBountyContent, parseConstants, type ConstantContent } from "../common/bounty";
 import { ErgoPlatform } from "./platform";
 import { hexToUtf8 } from "./utils";
 import { explorer_uri } from "./envs";
@@ -167,7 +167,28 @@ export async function fetch_bounties(offset: number = 0): Promise<Map<string, Bo
                             const acceptedSubmissions = submissionStats[1];
                             const rejectedSubmissions = submissionStats[2];
                             const rewardAmount = parseInt(e.additionalRegisters.R7.renderedValue);
-                            const creatorPubKey = e.additionalRegisters.R8.renderedValue;
+                            // const creatorPubKey = e.additionalRegisters.R8.renderedValue; // Will be derived from parsedConstants
+                            
+                            // Parse R8 register for constants
+                            const r8Value = e.additionalRegisters.R8?.renderedValue;
+                            let parsedConstants: ConstantContent = { 
+                                raw: r8Value, 
+                                owner: '', 
+                                dev_addr: '', 
+                                dev_hash: '', 
+                                dev_fee: 0, 
+                                token_id: '' 
+                            };
+                            if (r8Value) {
+                                try {
+                                    parsedConstants = parseConstants(r8Value);
+                                } catch (err) {
+                                    console.error("Failed to parse R8 constants for box:", e.boxId, "R8 value:", r8Value, "Error:", err);
+                                    // Keep default empty constants or skip this bounty if constants are crucial and unparseable
+                                }
+                            } else {
+                                console.warn("R8 register not found or empty for box:", e.boxId);
+                            }
                             
                             // Parse the encoded JSON data from R9
                             const bountyData = e.additionalRegisters.R9.renderedValue;
@@ -209,22 +230,15 @@ export async function fetch_bounties(offset: number = 0): Promise<Map<string, Bo
                                                             title: content.title ?? "Untitled Bounty", // Example title
                                                             description: content.description ?? "No description available", // Example description
                                                             reward: rewardAmount, // Example reward
-                                                            constants: {
-                                                                owner: "exampleOwner",
-                                                                dev_addr: "exampleDevAddress",
-                                                                dev_hash: "exampleDevHash",
-                                                                dev_fee: 1000,
-                                                                token_id: "exampleTokenId",
-                                                                platform_fee_percent: 10, // Optional
-                                                                dispute_period: 7 // Optional
-                                                            }, // Example constants
+                                                            constants: parsedConstants, // Use parsed constants
                                                             deadline: deadline,
                                                             min_submissions: minSubmissions,
                                                             total_submissions: totalSubmissions,
                                                             accepted_submissions: acceptedSubmissions,
                                                             rejected_submissions: rejectedSubmissions,
                                                             reward_amount: rewardAmount,
-                                                            creator_pub_key: creatorPubKey,
+                                                            creator: parsedConstants.owner, // Set creator from parsedConstants
+                                                            creator_pub_key: parsedConstants.owner, // Assuming owner address also serves as pub_key
                                                             submissions_root: submissionsRoot,
                                                             judgements_root: judgmentsRoot,
                                                             metadata_root: metadataRoot,
